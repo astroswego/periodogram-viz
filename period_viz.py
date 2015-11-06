@@ -48,6 +48,8 @@ def main():
     make_sure_path_exists(args.output)
 
     fig, axes = plt.subplots(1, 2)
+    lc_axis, pgram_axis = axes
+    lc_axis.invert_yaxis()
 
     times, mags, *err = np.loadtxt(args.input, unpack=True)
 
@@ -108,8 +110,6 @@ def animate(fig, times, mags, periods, pgram, period):
     lc_axis, pgram_axis = fig.get_axes()
     lc_axis.clear()
     pgram_axis.clear()
-
-    lc_axis.invert_yaxis()
 
     phases = (times / period) % 1.0
 
