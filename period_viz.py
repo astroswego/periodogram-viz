@@ -9,6 +9,7 @@ from os import makedirs
 from os.path import join, isdir
 from scipy.signal import lombscargle
 from argparse import ArgumentParser
+from matplotlib import animation
 
 
 def get_args():
@@ -21,7 +22,10 @@ def get_args():
     parser.add_argument("-n", "--name", type=str, default="period_viz_",
         help="Name to prefix files with (default 'period_viz_').")
     parser.add_argument("-t", "--type", type=str, default="png",
-        help="Image format (default 'png').")
+        help="Image format. If format is 'gif', outputs a single gif loop. "
+             "Otherwise outputs a series of numbered images (default 'png').")
+    parser.add_argument("-f", "--fps", type=int, default=30,
+        help="Frames per second if type is 'gif' (default 30).")
     parser.add_argument("--min-period", type=float, default=0.1,
         help="Minimum period in search space (default 0.1).")
     parser.add_argument("--max-period", type=float, default=10.0,
@@ -37,6 +41,8 @@ def main():
 
     make_sure_path_exists(args.output)
 
+    fig, axes = plt.subplots(1, 2)
+
     times, mags, *err = np.loadtxt(args.input, unpack=True)
 
     periods, pgram = get_pgram(times, mags,
@@ -46,12 +52,21 @@ def main():
     n_periods = len(periods)
     n_digits = int(np.floor(np.log10(n_periods)+1))
 
-    for i, period in enumerate(periods):
-        fname = join(args.output,
-                     ("{}{:0"+str(n_digits)+"d}.{}").format(args.name, i,
-                                                            args.type))
+    if args.type == "gif":
+        def animate_i(i):
+            return animate(fig, times, mags, periods, pgram, periods[i])
 
-        display(times, mags, periods, pgram, period, fname)
+        fname = join(args.output, args.name+".gif")
+        anim = animation.FuncAnimation(fig, animate_i, frames=n_periods)
+        anim.save(fname, writer="imagemagick", fps=args.fps)
+    else:
+        for i, period in enumerate(periods):
+            animate(fig, times, mags, periods, pgram, period)
+
+            fname = join(args.output,
+                         ("{}{:0"+str(n_digits)+"d}.{}").format(args.name, i,
+                                                                args.type))
+            fig.savefig(fname)
 
 
 def get_pgram(times, mags, min_period, max_period, precision):
@@ -67,9 +82,10 @@ def get_pgram(times, mags, min_period, max_period, precision):
     return np.fliplr(np.vstack((periods, pgram)))
 
 
-def display(times, mags, periods, pgram, period, fname):
-    fig, axes = plt.subplots(1, 2)
-    lc_axis, pgram_axis = axes
+def animate(fig, times, mags, periods, pgram, period):
+    lc_axis, pgram_axis = fig.get_axes()
+    lc_axis.clear()
+    pgram_axis.clear()
 
     lc_axis.invert_yaxis()
 
@@ -79,9 +95,6 @@ def display(times, mags, periods, pgram, period, fname):
 
     pgram_axis.plot(periods, pgram, "k-", zorder=2)
     pgram_axis.axvline(period, color="red", linestyle="-", zorder=1)
-
-    fig.savefig(fname)
-    plt.close(fig)
 
 
 
