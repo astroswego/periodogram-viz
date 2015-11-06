@@ -26,12 +26,18 @@ def get_args():
              "Otherwise outputs a series of numbered images (default 'png').")
     parser.add_argument("-f", "--fps", type=int, default=30,
         help="Frames per second if type is 'gif' (default 30).")
+    parser.add_argument("-p", "--period", type=float, default=None,
+        help="The 'true' period. This will be zoomed in on (default None).")
     parser.add_argument("--min-period", type=float, default=0.1,
         help="Minimum period in search space (default 0.1).")
     parser.add_argument("--max-period", type=float, default=10.0,
         help="Maximum period in search space (default 10.0).")
-    parser.add_argument("--precision", type=float, default=0.05,
-        help="Precision of search space (default 0.05).")
+    parser.add_argument("--coarse-precision", type=float, default=0.05,
+        help="Coarse precision of search space (default 0.05).")
+    parser.add_argument("--fine-precision", type=float, default=0.01,
+        help="Fine precision of search space near true period (default 0.01).")
+    parser.add_argument("--fine-radius", type=float, default=0.1,
+        help="Radius to cover with fine precision (default 0.1).")
 
     return parser.parse_args()
 
@@ -45,9 +51,11 @@ def main():
 
     times, mags, *err = np.loadtxt(args.input, unpack=True)
 
-    periods, pgram = get_pgram(times, mags,
-                               args.min_period, args.max_period,
-                               args.precision)
+    periods = get_periods(args.period,
+                          args.min_period, args.max_period,
+                          args.coarse_precision, args.fine_precision,
+                          args.fine_radius)
+    pgram = get_pgram(times, mags, periods)
 
     n_periods = len(periods)
     n_digits = int(np.floor(np.log10(n_periods)+1))
@@ -69,17 +77,31 @@ def main():
             fig.savefig(fname)
 
 
-def get_pgram(times, mags, min_period, max_period, precision):
-    min_freq, max_freq = np.divide(2*np.pi,
-                                   (max_period, min_period))
-    freqs = np.arange(min_freq, max_freq, precision)
+def get_periods(period,
+                min_period, max_period,
+                coarse_precision, fine_precision,
+                fine_radius):
+    if period is None:
+        periods = np.arange(min_period, max_period, coarse_precision)
+    else:
+        radius_low, radius_high = period + np.multiply([-1, +1], fine_radius)
 
+        periods_low = np.arange(min_period, radius_low, coarse_precision)
+        periods_mid = np.arange(radius_low, radius_high, fine_precision)
+        periods_high = np.arange(radius_high, max_period, coarse_precision)
+
+        periods = np.concatenate((periods_low, periods_mid, periods_high))
+
+    return periods
+
+
+def get_pgram(times, mags, periods):
+    freqs = 2*np.pi / periods
     scaled_mags = (mags - np.mean(mags)) / np.std(mags)
 
     pgram = lombscargle(times, scaled_mags, freqs)
-    periods = 2*np.pi / freqs
 
-    return np.fliplr(np.vstack((periods, pgram)))
+    return pgram
 
 
 def animate(fig, times, mags, periods, pgram, period):
@@ -95,7 +117,6 @@ def animate(fig, times, mags, periods, pgram, period):
 
     pgram_axis.plot(periods, pgram, "k-", zorder=2)
     pgram_axis.axvline(period, color="red", linestyle="-", zorder=1)
-
 
 
 def make_sure_path_exists(path):
